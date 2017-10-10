@@ -33,3 +33,4 @@ Tutorials Index
 * :ref:`SaltStack Walk-through <tutorial-salt-walk-through>`
 * :ref:`Writing Salt Tests <tutorial-salt-testing>`
 * :ref:`Multi-cloud orchestration with Apache Libcloud <tutorial-libcloud>`
+* :ref:`Autoaccept Minions from Grains <tutorial-autoaccept-grains>`
