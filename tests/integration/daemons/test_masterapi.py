@@ -8,7 +8,7 @@ import stat
 
 # Import Salt Testing libs
 from tests.support.case import ShellCase
-from tests.support.paths import TMP, INTEGRATION_TEST_DIR
+from tests.integration.utils import testprogram
 
 # Import 3rd-party libs
 
@@ -18,20 +18,24 @@ import salt.utils.files
 
 # all read, only owner write
 autosign_file_permissions = stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR
-autosign_file_path = os.path.join(TMP, 'rootdir', 'autosign_file')
 
 
-class AutosignGrainsTest(ShellCase):
+class AutosignGrainsTest(ShellCase, testprogram.TestProgramCase):
     '''
     Test autosigning minions based on grain values.
     '''
 
     def setUp(self):
-        shutil.copyfile(
-            os.path.join(INTEGRATION_TEST_DIR, 'files', 'autosign_grains', 'autosign_file'),
-            autosign_file_path
+        super(ShellCase, self).setUp()
+
+        self.master = testprogram.TestDaemonSaltMaster(
+            name='autosign_grains_accept_master',
+            parent_dir=self._test_dir,
         )
-        os.chmod(autosign_file_path, autosign_file_permissions)
+        # Call setup here to ensure config and script exist
+        self.master.setup()
+        self.master.run('-d')
+        self.master.shutdown(wait_for_orphans=3)
 
         self.run_key('-d minion -y')
         self.run_call('test.ping -l quiet')  # get minon to try to authenticate itself again
@@ -46,12 +50,6 @@ class AutosignGrainsTest(ShellCase):
             os.makedirs(self.autosign_grains_dir)
 
     def tearDown(self):
-        shutil.copyfile(
-            os.path.join(INTEGRATION_TEST_DIR, 'files', 'autosign_file'),
-            autosign_file_path
-        )
-        os.chmod(autosign_file_path, autosign_file_permissions)
-        
         self.run_call('test.ping -l quiet')  # get minon to authenticate itself again
 
         if os.path.isdir(self.autosign_grains_dir):
