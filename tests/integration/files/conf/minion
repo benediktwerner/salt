@@ -103,6 +103,3 @@ osenv:
 cmd_blacklist_glob:
   - 'bad_command *'
   - 'second_bad_command *'
-
-autosign_grains:
-  - test_grain
