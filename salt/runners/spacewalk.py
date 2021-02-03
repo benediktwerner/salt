@@ -30,6 +30,7 @@ master configuration at ``/etc/salt/master`` or ``/etc/salt/master.d/spacewalk.c
 """
 
 import atexit
+import datetime
 import logging
 
 from salt.ext import six
@@ -323,6 +324,97 @@ def deleteAllActivationKeys(server):
     if failed_keys:
         ret["failed"] = failed_keys
     return ret
+
+
+def patch(server, target_system, **kwargs):
+    """
+    Call SUSE Manager / uyuni xmlrpc API and schedule an apply_all_patches job for a given salt minion.
+
+    You can provide a delay in minutes or fixed schedule time for the job in format of: 15:30 20-04-1970
+
+    If no delay or schedule is provided then the job will be scheduled as soon as possible.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt-run suma.patch spacewalk01.domain.com your-minion.great.biz schedule='20:30 20-02-2021'
+
+        salt-run suma.patch spacewalk01.domain.com your-minion.great.biz delay=15
+
+    State Example as a reactor sls:
+
+    .. code-block:: yaml
+
+        applypatches:
+          runner.suma.patch:
+            - server: spacewalk01.domain.com
+            - target_system: {{ data['id'] }}
+            - delay: 60
+
+        applypatches:
+          runner.suma.patch:
+            - server: spacewalk01.domain.com
+            - target_system: {{ data['id'] }}
+            - schedule: 21:00 13-02-2021
+    """
+
+    try:
+        client, key = _get_session(server)
+    except Exception as exc:  # pylint: disable=broad-except
+        err_msg = "Exception raised when connecting to spacewalk server ({}): {}".format(
+            server, exc
+        )
+        log.error(err_msg)
+        return {"Error": err_msg}
+
+    try:
+        systemid = client.system.getId(key, target_system)
+    except Exception as exc:  # pylint: disable=broad-except
+        err_msg = "Exception raised when trying to get system ID ({}): {}".format(
+            server, exc
+        )
+        log.error(err_msg)
+        return {"Error": err_msg}
+
+    try:
+        errata_list = client.system.getRelevantErrata(key, systemid[0]["id"])
+    except Exception as exc:  # pylint: disable=broad-except
+        err_msg = "Exception raised when trying to get all patch IDs ({}): {}".format(
+            server, exc
+        )
+        log.error(err_msg)
+        return {"Error": err_msg}
+
+    errata_id_list = []
+
+    if errata_list:
+        for errata in errata_list:
+            errata_id_list.append(errata["id"])
+
+    if "schedule" in kwargs:
+        schedule = kwargs["schedule"]
+        nowlater = datetime.datetime.strptime(schedule, "%H:%M %d-%m-%Y")
+    elif "delay" in kwargs:
+        delay = kwargs["delay"]
+        nowlater = datetime.datetime.now() + datetime.timedelta(minutes=int(delay))
+    else:
+        nowlater = datetime.datetime.now()
+
+    earliest_occurrence = six.moves.xmlrpc_client.DateTime(nowlater)
+
+    try:
+        patch_job = client.system.scheduleApplyErrata(
+            key, systemid[0]["id"], errata_id_list, earliest_occurrence
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        err_msg = "Exception raised when scheduling patch job ({}): {}. Please double check if there is not already a job scheduled.".format(
+            server, exc
+        )
+        log.error(err_msg)
+        return {"Error": err_msg}
+
+    return {"Patch Job ID is": patch_job}
 
 
 def unregister(name, server_url):
